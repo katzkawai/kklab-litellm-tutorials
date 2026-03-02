@@ -726,6 +726,117 @@ uv run scripts/<ファイル名>.py
 
 
 % ---------------------------------------------------------
+\section{類似ツールとの比較}
+\label{sec:comparison}
+
+LiteLLM と同様に、複数の LLM プロバイダーを統一的に扱うツールやサービスが存在する。
+本節では代表的な類似ツールを取り上げ、LiteLLM との違いを整理する。
+
+\subsection{比較対象ツールの概要}
+
+\subsubsection{OpenRouter}
+
+OpenRouter\footnote{\url{https://openrouter.ai/}} は、400以上の LLM モデルに単一の API エンドポイントからアクセスできる \textbf{マネージド SaaS 型}の LLM ゲートウェイである。
+インフラの構築やサーバーの運用が不要で、API キーを取得するだけですぐに利用を開始できる。
+料金は各プロバイダーの実費にプラットフォーム手数料（5--5.5\%）を加えた従量課金制である。
+自動モデル選択やプロバイダーレベルのフォールバックルーティングも備えるが、カスタムルーティングロジックの柔軟性は LiteLLM に劣る。
+
+\subsubsection{aisuite}
+
+aisuite\footnote{\url{https://github.com/andrewyng/aisuite}} は、Andrew Ng らが開発したオープンソースの Python ライブラリである。
+LiteLLM と同様に \code{"プロバイダー:モデル"} 形式でモデルを指定し、OpenAI 互換のインターフェースで呼び出せる。
+最大の特徴は\textbf{軽量さ}であり、各プロバイダーの SDK を薄くラップするシンプルな設計となっている。
+Python 関数を直接ツールとして渡せるエージェント機能も備えるが、Proxy Server やロードバランシングなどの運用機能は持たない。
+
+\subsubsection{LangChain}
+
+LangChain\footnote{\url{https://www.langchain.com/}} は、LLM を活用したアプリケーション構築のための包括的フレームワークである。
+チャットモデルの呼び出しだけでなく、RAG（検索拡張生成）、エージェント、メモリ管理、ツール連携など、複雑なワークフローの構築を支援する。
+LLM ゲートウェイとしての機能は LiteLLM ほど特化していないが、アプリケーションレイヤーの機能が非常に豊富である。
+
+\subsubsection{Portkey}
+
+Portkey\footnote{\url{https://portkey.ai/}} は、LLM アプリケーション向けのオブザーバビリティおよびゲートウェイプラットフォームである。
+マルチプロバイダーのルーティング、フォールバック、キャッシュ、レート制限、トークン使用量追跡などの機能を提供し、OpenAI 互換の Proxy として動作する。
+クラウド版とセルフホスト版の両方が利用可能で、エンタープライズ向けのガバナンス機能が充実している。
+
+\subsection{機能比較}
+
+主要な機能の比較を表~\ref{tab:comparison}に示す。
+
+\begin{table}[htbp]
+\centering
+\caption{LiteLLM と類似ツールの機能比較}
+\label{tab:comparison}
+\small
+\begin{tabular}{lccccl}
+\toprule
+機能 & \rotatebox{70}{LiteLLM} & \rotatebox{70}{OpenRouter} & \rotatebox{70}{aisuite} & \rotatebox{70}{LangChain} & \rotatebox{70}{Portkey} \\
+\midrule
+統一 API             & \checkmark & \checkmark & \checkmark & \checkmark & \checkmark \\
+対応モデル数          & 100+       & 400+       & 20+        & 50+        & 100+       \\
+Proxy Server         & \checkmark & ---        & ---        & ---        & \checkmark \\
+ロードバランシング     & \checkmark & 限定的      & ---        & ---        & \checkmark \\
+フォールバック         & \checkmark & \checkmark & ---        & \checkmark & \checkmark \\
+コスト追跡            & \checkmark & \checkmark & ---        & ---        & \checkmark \\
+ストリーミング         & \checkmark & \checkmark & \checkmark & \checkmark & \checkmark \\
+非同期対応            & \checkmark & ---        & \checkmark & \checkmark & \checkmark \\
+ツール呼び出し         & \checkmark & \checkmark & \checkmark & \checkmark & \checkmark \\
+埋め込み              & \checkmark & \checkmark & ---        & \checkmark & \checkmark \\
+RAG・エージェント      & ---        & ---        & 限定的      & \checkmark & ---        \\
+オブザーバビリティ     & \checkmark & 限定的      & ---        & \checkmark & \checkmark \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{デプロイメントモデルと料金}
+
+各ツールのデプロイメントモデルと料金体系を表~\ref{tab:deployment}に示す。
+
+\begin{table}[htbp]
+\centering
+\caption{デプロイメントモデルと料金の比較}
+\label{tab:deployment}
+\small
+\begin{tabular}{llp{6.5cm}}
+\toprule
+ツール & デプロイメント & 料金 \\
+\midrule
+LiteLLM    & セルフホスト（OSS） / Enterprise & OSS 版は無料。Enterprise 版は年額約 \$30,000。セルフホストのインフラ費用が別途必要 \\
+OpenRouter & マネージド SaaS               & プロバイダー実費 + プラットフォーム手数料 5--5.5\%。インフラ管理不要 \\
+aisuite    & ライブラリ（OSS）              & 完全無料（MIT ライセンス）。各プロバイダーの API 料金のみ \\
+LangChain  & ライブラリ（OSS） / LangSmith  & OSS 版は無料。LangSmith（監視・評価）は有料プランあり \\
+Portkey    & クラウド / セルフホスト          & 無料プランあり。有料プランは従量課金制 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{用途に応じた選択指針}
+
+\begin{itemize}
+  \item \textbf{手軽に複数モデルを比較したい}:
+    aisuite が最も軽量で導入が容易。研究段階でのプロトタイピングに適する
+
+  \item \textbf{セルフホストで本格的な LLM ゲートウェイを運用したい}:
+    LiteLLM が最適。ロードバランシング、フォールバック、コスト追跡、仮想キー管理など、本番運用に必要な機能が揃っている
+
+  \item \textbf{インフラ管理なしで多数のモデルにアクセスしたい}:
+    OpenRouter が適する。SaaS 型のため運用負荷がゼロで、400以上のモデルに即座にアクセスできる
+
+  \item \textbf{RAG やエージェントなど複雑なワークフローを構築したい}:
+    LangChain が包括的な機能を提供する。LLM ゲートウェイとしては LiteLLM と組み合わせて使うことも可能
+
+  \item \textbf{エンタープライズ向けのガバナンスと監視が必要}:
+    Portkey がオブザーバビリティとガバナンス機能に優れる
+\end{itemize}
+
+\begin{tipbox}[LiteLLM の位置づけ]
+LiteLLM は「セルフホスト可能で機能が豊富な OSS の LLM ゲートウェイ」として、aisuite の軽量さと OpenRouter のマネージドサービスの中間に位置する。
+特に、データの主権を維持しつつ高度なルーティングやコスト管理が必要な研究・開発環境において、強力な選択肢となる。
+\end{tipbox}
+
+
+% ---------------------------------------------------------
 \section{おわりに}
 \label{sec:conclusion}
 
