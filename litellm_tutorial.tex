@@ -982,6 +982,134 @@ model_list:
 
 
 % ---------------------------------------------------------
+\section{Together AI との連携}
+\label{sec:together}
+
+Together AI\footnote{\url{https://www.together.ai/}} は、200以上のオープンソースモデルをクラウド API として提供するプラットフォームである。
+Llama、DeepSeek、Qwen、Mistral など主要なオープンソースモデルに、高速なサーバーレス推論でアクセスできる。
+
+vLLM や Ollama が「自前の GPU でモデルを動かす」のに対し、Together AI は\textbf{GPU を持たなくてもオープンソースモデルをクラウド経由で利用できる}点が大きな違いである。
+商用 API（OpenAI 等）と比較して、同等クラスのモデルをより低コストで利用できることが多い。
+
+\subsection{オープンソースモデルの利用形態}
+
+オープンソースモデルの利用形態を表~\ref{tab:oss_deploy}に整理する。
+
+\begin{table}[htbp]
+\centering
+\caption{オープンソースモデルの利用形態と比較}
+\label{tab:oss_deploy}
+\begin{tabular}{lp{2.5cm}p{2.5cm}p{2.5cm}p{2.5cm}}
+\toprule
+         & \textbf{Together AI} & \textbf{vLLM} & \textbf{Ollama} & \textbf{商用 API} \\
+\midrule
+デプロイ  & クラウド（マネージド） & セルフホスト & セルフホスト & クラウド（マネージド） \\
+GPU      & 不要                & 必須         & 不要（推奨） & 不要 \\
+対象モデル & OSS モデル          & OSS モデル   & OSS モデル   & 商用モデル \\
+コスト    & 従量課金（低価格）    & GPU 費用のみ & GPU/CPU 費用のみ & 従量課金（高価格） \\
+スループット & 高い              & 高い         & 中程度        & 高い \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{セットアップ}
+
+Together AI の利用には、API キーの取得と環境変数の設定が必要である。
+API キーは Together AI のダッシュボード\footnote{\url{https://api.together.xyz/settings/api-keys}}から取得できる。
+
+\begin{lstlisting}[style=bash]
+export TOGETHERAI_API_KEY="your-api-key"
+\end{lstlisting}
+
+\subsection{基本的な呼び出し}
+\label{subsec:together_basic}
+
+Together AI 上のモデルを呼び出すには、\code{together\_ai/} プレフィックスにモデル ID を続ける。
+
+\lstinputlisting[style=python, caption={Together AI の基本呼び出し（\code{scripts/27\_together\_basic.py}）}]{scripts/27_together_basic.py}
+
+\begin{lstlisting}[style=bash]
+uv run scripts/27_together_basic.py
+\end{lstlisting}
+
+\subsection{複数モデルの比較}
+\label{subsec:together_multi}
+
+Together AI の強みの一つは、多数のオープンソースモデルを同一プラットフォーム上で比較できることである。
+以下のスクリプトでは、Llama、Qwen、Mistral の各モデルに同じ質問を並列で送信し、応答を比較する。
+
+\lstinputlisting[style=python, caption={Together AI 上の複数モデル比較（\code{scripts/28\_together\_multi\_model.py}）}]{scripts/28_together_multi_model.py}
+
+\begin{lstlisting}[style=bash]
+uv run scripts/28_together_multi_model.py
+\end{lstlisting}
+
+\subsection{ストリーミング}
+\label{subsec:together_streaming}
+
+Together AI からのストリーミング応答も、他のプロバイダーと同様に \code{stream=True} で利用できる。
+
+\lstinputlisting[style=python, caption={Together AI ストリーミング（\code{scripts/29\_together\_streaming.py}）}]{scripts/29_together_streaming.py}
+
+\begin{lstlisting}[style=bash]
+uv run scripts/29_together_streaming.py
+\end{lstlisting}
+
+\subsection{埋め込み}
+\label{subsec:together_embedding}
+
+Together AI は埋め込みモデルも提供している。
+\code{embedding()} 関数で Together AI 上のモデルを指定すれば、テキストの埋め込みベクトルを生成できる。
+
+\lstinputlisting[style=python, caption={Together AI による埋め込み生成（\code{scripts/30\_together\_embedding.py}）}]{scripts/30_together_embedding.py}
+
+\begin{lstlisting}[style=bash]
+uv run scripts/30_together_embedding.py
+\end{lstlisting}
+
+\subsection{コスト比較}
+\label{subsec:together_cost}
+
+LiteLLM のコスト追跡機能を使って、Together AI（オープンソースモデル）と商用 API（OpenAI）のコストを比較できる。
+一般に、Together AI で提供されるオープンソースモデルは商用 API よりも低コストで利用できる。
+
+\lstinputlisting[style=python, caption={Together AI とクラウド API のコスト比較（\code{scripts/31\_together\_cost\_compare.py}）}]{scripts/31_together_cost_compare.py}
+
+\begin{lstlisting}[style=bash]
+uv run scripts/31_together_cost_compare.py
+\end{lstlisting}
+
+\subsection{主な対応モデル}
+
+Together AI 上で LiteLLM から利用できる代表的なモデルを表~\ref{tab:together_models}に示す。
+
+\begin{table}[htbp]
+\centering
+\caption{Together AI の代表的モデル}
+\label{tab:together_models}
+\small
+\begin{tabular}{lp{5cm}l}
+\toprule
+モデル ID & 特徴 & カテゴリ \\
+\midrule
+\code{meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo}  & Meta 製、高速推論版           & チャット \\
+\code{meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo} & Meta 製、高性能版             & チャット \\
+\code{deepseek-ai/DeepSeek-V3}                       & DeepSeek MoE、低コスト        & チャット \\
+\code{deepseek-ai/DeepSeek-R1}                       & 推論特化（Reasoning）          & 推論 \\
+\code{Qwen/Qwen2.5-7B-Instruct-Turbo}               & Alibaba 製、多言語対応         & チャット \\
+\code{mistralai/Mistral-Small-24B-Instruct-2501}     & Mistral AI 製                & チャット \\
+\code{intfloat/multilingual-e5-large-instruct}       & 多言語埋め込み、1024次元       & 埋め込み \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{tipbox}[ポイント]
+Together AI は「GPU を持っていないが、オープンソースモデルの性能を評価・活用したい」という場面に最適である。
+特に研究において、Llama, DeepSeek, Qwen 等の複数のオープンソースモデルを同一条件で比較評価したい場合、Together AI + LiteLLM の組み合わせにより、最小限のコードで効率的にベンチマーク実験を実施できる。
+\end{tipbox}
+
+
+% ---------------------------------------------------------
 \section{スクリプト一覧}
 \label{sec:script_list}
 
@@ -1024,6 +1152,11 @@ model_list:
 \code{24\_ollama\_json.py}         & Ollama JSON モード           & \ref{subsec:ollama_json} \\
 \code{25\_ollama\_tool\_calling.py} & Ollama ツール呼び出し        & \ref{subsec:ollama_tool} \\
 \code{26\_local\_cloud\_compare.py} & ローカル vs クラウド比較      & \ref{subsec:local_cloud_compare} \\
+\code{27\_together\_basic.py}      & Together AI 基本呼び出し     & \ref{subsec:together_basic} \\
+\code{28\_together\_multi\_model.py} & Together AI 複数モデル比較  & \ref{subsec:together_multi} \\
+\code{29\_together\_streaming.py}  & Together AI ストリーミング    & \ref{subsec:together_streaming} \\
+\code{30\_together\_embedding.py}  & Together AI 埋め込み生成      & \ref{subsec:together_embedding} \\
+\code{31\_together\_cost\_compare.py} & Together AI コスト比較      & \ref{subsec:together_cost} \\
 \bottomrule
 \end{longtable}
 
