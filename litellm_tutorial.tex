@@ -1,0 +1,748 @@
+% LiteLLM チュートリアル
+% LuaLaTeX でコンパイル: lualatex litellm_tutorial.tex
+\documentclass[a4paper,11pt]{ltjsarticle}
+
+% ===== パッケージ =====
+\usepackage{luatexja}
+\usepackage{luatexja-fontspec}
+\usepackage[margin=25mm]{geometry}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{hyperref}
+\usepackage{booktabs}
+\usepackage{enumitem}
+\usepackage{tcolorbox}
+\tcbuselibrary{listings,breakable,skins}
+\usepackage{graphicx}
+\usepackage{longtable}
+\usepackage{fancyhdr}
+
+% ===== ハイパーリンク設定 =====
+\hypersetup{
+  colorlinks=true,
+  linkcolor=blue!70!black,
+  urlcolor=blue!70!black,
+  citecolor=blue!70!black,
+}
+
+% ===== ヘッダー・フッター =====
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\small LiteLLM チュートリアル}
+\fancyhead[R]{\small\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+
+% ===== コードスタイル =====
+\definecolor{codebg}{HTML}{F7F7F7}
+\definecolor{codeframe}{HTML}{CCCCCC}
+\definecolor{keyword}{HTML}{0000FF}
+\definecolor{string}{HTML}{BA2121}
+\definecolor{comment}{HTML}{408080}
+
+\lstdefinestyle{python}{
+  language=Python,
+  basicstyle=\ttfamily\small,
+  keywordstyle=\color{keyword}\bfseries,
+  stringstyle=\color{string},
+  commentstyle=\color{comment}\itshape,
+  backgroundcolor=\color{codebg},
+  frame=single,
+  rulecolor=\color{codeframe},
+  breaklines=true,
+  breakatwhitespace=true,
+  showstringspaces=false,
+  tabsize=4,
+  numbers=left,
+  numberstyle=\tiny\color{gray},
+  numbersep=8pt,
+  xleftmargin=15pt,
+  framexleftmargin=15pt,
+}
+
+\lstdefinestyle{bash}{
+  language=bash,
+  basicstyle=\ttfamily\small,
+  keywordstyle=\color{keyword},
+  backgroundcolor=\color{codebg},
+  frame=single,
+  rulecolor=\color{codeframe},
+  breaklines=true,
+  showstringspaces=false,
+  xleftmargin=15pt,
+  framexleftmargin=15pt,
+}
+
+% ===== tcolorbox スタイル =====
+\newtcolorbox{notebox}[1][]{
+  colback=blue!5!white,
+  colframe=blue!60!black,
+  title={#1},
+  fonttitle=\bfseries,
+  breakable,
+}
+
+\newtcolorbox{warnbox}[1][]{
+  colback=red!5!white,
+  colframe=red!60!black,
+  title={#1},
+  fonttitle=\bfseries,
+  breakable,
+}
+
+\newtcolorbox{tipbox}[1][]{
+  colback=green!5!white,
+  colframe=green!50!black,
+  title={#1},
+  fonttitle=\bfseries,
+  breakable,
+}
+
+% ===== コマンド定義 =====
+\newcommand{\code}[1]{\texttt{#1}}
+\newcommand{\py}[1]{\lstinline[style=python]{#1}}
+
+% ===== 文書情報 =====
+\title{%
+  {\LARGE LiteLLM チュートリアル} \\[6pt]
+  {\large --- 100以上のLLMを統一インターフェースで操る ---}
+}
+\author{
+  河合勝彦 \\
+  名古屋市立大学大学院経済学研究科 \\
+  \texttt{kkawai@econ.nagoya-cu.ac.jp}
+}
+\date{\today}
+
+% =========================================================
+\begin{document}
+\maketitle
+\tableofcontents
+\clearpage
+
+% ---------------------------------------------------------
+\section{はじめに}
+\label{sec:introduction}
+
+大規模言語モデル（LLM: Large Language Model）の利用が広がる中、OpenAI、Anthropic、Google など各社が独自の API を提供している。
+研究や開発においては複数のプロバイダーのモデルを比較・切り替えたい場面が多いが、プロバイダーごとに異なる API 仕様に対応するのは煩雑である。
+
+\textbf{LiteLLM}\footnote{\url{https://docs.litellm.ai/}} は、100以上の LLM API を \textbf{OpenAI 互換の統一インターフェース}で呼び出せる Python ライブラリである。
+主な特徴を以下に示す。
+
+\begin{itemize}
+  \item \textbf{統一 API}: \code{completion()} 一つで OpenAI, Anthropic, Google Gemini, AWS Bedrock など多数のプロバイダーを呼び出せる
+  \item \textbf{フォールバックとリトライ}: モデル障害時に自動で代替モデルに切り替え
+  \item \textbf{ロードバランシング}: 複数デプロイメント間でリクエストを分散
+  \item \textbf{コスト追跡}: API 呼び出しのコストを自動計算
+  \item \textbf{ストリーミング}: 全プロバイダーで統一的なストリーミング応答
+  \item \textbf{非同期対応}: \code{acompletion()} による非同期処理
+  \item \textbf{Proxy Server}: OpenAI 互換の API ゲートウェイとしても動作
+\end{itemize}
+
+\subsection{本チュートリアルについて}
+
+本チュートリアルでは、LiteLLM の基本的な使い方から応用的な機能まで、サンプルスクリプトを交えて解説する。
+各スクリプトは \code{uv} コマンドで直接実行できるように、PEP 723 のインラインメタデータ（\code{///~script} ブロック）を記述している。
+
+\subsection{対応プロバイダー}
+
+LiteLLM が対応する主なプロバイダーを表~\ref{tab:providers}に示す。
+
+\begin{table}[htbp]
+\centering
+\caption{LiteLLM の主な対応プロバイダー}
+\label{tab:providers}
+\begin{tabular}{llp{6cm}}
+\toprule
+プロバイダー & プレフィックス & 代表的モデル \\
+\midrule
+OpenAI       & \code{openai/}    & gpt-4o, gpt-4o-mini \\
+Anthropic    & \code{anthropic/} & claude-sonnet-4-5, claude-haiku-4-5 \\
+Google       & \code{gemini/}    & gemini-2.0-flash, gemini-1.5-pro \\
+AWS Bedrock  & \code{bedrock/}   & anthropic.claude-3-sonnet 等 \\
+Azure OpenAI & \code{azure/}     & デプロイメント名で指定 \\
+Mistral AI   & \code{mistral/}   & mistral-large-latest 等 \\
+Groq         & \code{groq/}      & llama-3.1-70b-versatile 等 \\
+Ollama       & \code{ollama/}    & llama3, phi3 等（ローカル） \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+
+% ---------------------------------------------------------
+\section{環境構築}
+\label{sec:setup}
+
+\subsection{uv のインストール}
+
+本チュートリアルでは、Python パッケージマネージャー \code{uv}\footnote{\url{https://docs.astral.sh/uv/}} を使用してスクリプトを実行する。
+\code{uv} は Rust 製の高速なパッケージマネージャーであり、依存関係の解決とスクリプト実行を一つのコマンドで行える。
+
+\begin{lstlisting}[style=bash]
+# uv のインストール
+curl -LsSf https://astral.sh/uv/install.sh | sh
+\end{lstlisting}
+
+\subsection{API キーの設定}
+
+各プロバイダーの API キーを環境変数に設定する。
+
+\begin{lstlisting}[style=bash]
+# 各プロバイダーの API キーを設定
+export OPENAI_API_KEY="sk-..."
+export ANTHROPIC_API_KEY="sk-ant-..."
+export GEMINI_API_KEY="..."
+\end{lstlisting}
+
+\begin{warnbox}[注意]
+API キーはソースコードに直接記述せず、必ず環境変数や \code{.env} ファイルを通じて管理すること。
+\end{warnbox}
+
+\subsection{スクリプトの実行方法}
+
+本チュートリアルの各サンプルスクリプトは、PEP 723 のインラインメタデータを含んでおり、\code{uv run} で依存関係の自動インストールとともに実行できる。
+
+\begin{lstlisting}[style=bash]
+# スクリプトの実行（依存関係は自動でインストールされる）
+uv run scripts/01_basic_completion.py
+\end{lstlisting}
+
+
+% ---------------------------------------------------------
+\section{基本的な使い方}
+\label{sec:basic}
+
+\subsection{基本的な補完呼び出し}
+\label{subsec:basic_completion}
+
+最もシンプルな LiteLLM の使い方は、\code{completion()} 関数を呼び出すことである。
+OpenAI の Chat Completions API と同じフォーマットで、任意のプロバイダーのモデルを呼び出せる。
+
+\lstinputlisting[style=python, caption={基本的な補完呼び出し（\code{scripts/01\_basic\_completion.py}）}]{scripts/01_basic_completion.py}
+
+\begin{itemize}
+  \item \code{model}: \code{"プロバイダー/モデル名"} の形式で指定する
+  \item \code{messages}: OpenAI 形式のメッセージリストを渡す
+  \item レスポンスには \code{choices}（応答テキスト）と \code{usage}（トークン使用量）が含まれる
+\end{itemize}
+
+\begin{lstlisting}[style=bash]
+uv run scripts/01_basic_completion.py
+\end{lstlisting}
+
+\subsection{複数プロバイダーの統一的な呼び出し}
+\label{subsec:multi_provider}
+
+LiteLLM の最大の利点は、同じコードで異なるプロバイダーのモデルを呼び出せることである。
+モデル名のプレフィックスを変えるだけで、プロバイダーが自動的に切り替わる。
+
+\lstinputlisting[style=python, caption={複数プロバイダーの呼び出し（\code{scripts/02\_multi\_provider.py}）}]{scripts/02_multi_provider.py}
+
+このスクリプトでは、OpenAI、Anthropic、Google Gemini の3つのプロバイダーに対して、同じ質問を同じインターフェースで送信している。
+これにより、モデル間の応答品質やトークン使用量を容易に比較できる。
+
+\begin{lstlisting}[style=bash]
+uv run scripts/02_multi_provider.py
+\end{lstlisting}
+
+
+% ---------------------------------------------------------
+\section{メッセージとプロンプト設計}
+\label{sec:messages}
+
+\subsection{システムプロンプトの活用}
+\label{subsec:system_prompt}
+
+システムプロンプトを使うことで、モデルの振る舞い（ペルソナ、回答スタイル、専門分野など）を制御できる。
+
+\lstinputlisting[style=python, caption={システムプロンプトの活用（\code{scripts/03\_system\_prompt.py}）}]{scripts/03_system_prompt.py}
+
+\code{messages} リストの先頭に \code{role: "system"} のメッセージを配置することで、以降のユーザーメッセージに対するモデルの応答方針を設定できる。
+
+\begin{lstlisting}[style=bash]
+uv run scripts/03_system_prompt.py
+\end{lstlisting}
+
+\subsection{マルチターン会話}
+\label{subsec:multi_turn}
+
+会話の文脈を保持するには、過去のやり取りをすべて \code{messages} リストに含める必要がある。
+以下のスクリプトでは、会話履歴を蓄積しながらマルチターンの対話を行う。
+
+\lstinputlisting[style=python, caption={マルチターン会話（\code{scripts/04\_multi\_turn.py}）}]{scripts/04_multi_turn.py}
+
+LLM の API はステートレスであるため、文脈を維持するには呼び出し側でメッセージ履歴を管理する必要がある。
+各ターンで \code{user} と \code{assistant} のメッセージを交互に追加していくことで、自然な対話が実現できる。
+
+\begin{lstlisting}[style=bash]
+uv run scripts/04_multi_turn.py
+\end{lstlisting}
+
+
+% ---------------------------------------------------------
+\section{ストリーミング}
+\label{sec:streaming}
+
+\subsection{同期ストリーミング}
+\label{subsec:sync_stream}
+
+通常の API 呼び出しでは、モデルが応答を完全に生成し終えるまで結果が返らない。
+ストリーミングを使うと、生成されたテキストを逐次的に受け取ることができ、ユーザー体験が向上する。
+
+\lstinputlisting[style=python, caption={同期ストリーミング（\code{scripts/05\_streaming.py}）}]{scripts/05_streaming.py}
+
+\code{stream=True} を指定すると、レスポンスはイテレータとなり、\code{for} ループで各チャンクを順次処理できる。
+各チャンクの \code{choices[0].delta.content} にテキストの断片が格納されている。
+
+\begin{lstlisting}[style=bash]
+uv run scripts/05_streaming.py
+\end{lstlisting}
+
+\subsection{非同期ストリーミング}
+\label{subsec:async_stream}
+
+\code{acompletion()} を使うと、非同期でのストリーミングが可能になる。
+Web アプリケーションやイベント駆動型のシステムで有用である。
+
+\lstinputlisting[style=python, caption={非同期ストリーミング（\code{scripts/06\_async\_streaming.py}）}]{scripts/06_async_streaming.py}
+
+\code{async for} を使って非同期イテレーションを行う点が同期版との違いである。
+
+\begin{lstlisting}[style=bash]
+uv run scripts/06_async_streaming.py
+\end{lstlisting}
+
+
+% ---------------------------------------------------------
+\section{非同期処理と並列呼び出し}
+\label{sec:async}
+
+\subsection{複数モデルの並列呼び出し}
+\label{subsec:parallel}
+
+\code{asyncio.gather()} と \code{acompletion()} を組み合わせることで、複数のモデルに対して並列にリクエストを送信できる。
+これにより、順次実行に比べて大幅な時間短縮が期待できる。
+
+\lstinputlisting[style=python, caption={非同期並列呼び出し（\code{scripts/07\_async\_parallel.py}）}]{scripts/07_async_parallel.py}
+
+\begin{tipbox}[ポイント]
+3つのモデルに順次リクエストすると合計応答時間は各モデルの応答時間の和になるが、並列実行では最も遅いモデルの応答時間のみで済む。
+\end{tipbox}
+
+\begin{lstlisting}[style=bash]
+uv run scripts/07_async_parallel.py
+\end{lstlisting}
+
+
+% ---------------------------------------------------------
+\section{パラメータ制御}
+\label{sec:parameters}
+
+\subsection{temperature パラメータ}
+\label{subsec:temperature}
+
+\code{temperature} は応答のランダム性を制御するパラメータである。
+値が低いほど決定論的な応答となり、高いほど多様で創造的な応答が得られる。
+
+\begin{itemize}
+  \item \code{temperature=0.0}: 最も決定論的。毎回ほぼ同じ応答
+  \item \code{temperature=0.5}: やや保守的だが多少の変動あり
+  \item \code{temperature=1.0}: デフォルト。バランスの取れたランダム性
+  \item \code{temperature=1.5}: 高いランダム性。創造的だが不安定になりうる
+\end{itemize}
+
+\lstinputlisting[style=python, caption={temperature パラメータの効果（\code{scripts/08\_temperature.py}）}]{scripts/08_temperature.py}
+
+\begin{lstlisting}[style=bash]
+uv run scripts/08_temperature.py
+\end{lstlisting}
+
+\subsection{主要パラメータ一覧}
+
+\code{completion()} 関数で使用可能な主要パラメータを表~\ref{tab:params}にまとめる。
+
+\begin{table}[htbp]
+\centering
+\caption{\code{completion()} の主要パラメータ}
+\label{tab:params}
+\begin{tabular}{llp{7cm}}
+\toprule
+パラメータ & 型 & 説明 \\
+\midrule
+\code{model}        & str   & モデル名（\code{"プロバイダー/モデル"} 形式） \\
+\code{messages}      & list  & メッセージリスト \\
+\code{temperature}   & float & ランダム性（0.0--2.0） \\
+\code{top\_p}        & float & Nucleus サンプリング（0.0--1.0） \\
+\code{max\_tokens}   & int   & 最大出力トークン数 \\
+\code{stop}          & list  & 生成停止文字列 \\
+\code{stream}        & bool  & ストリーミングの有効化 \\
+\code{response\_format} & dict & 応答形式（JSON モード等） \\
+\code{tools}         & list  & ツール（関数）定義 \\
+\code{tool\_choice}  & str   & ツール選択方法 \\
+\code{timeout}       & float & タイムアウト（秒） \\
+\code{num\_retries}  & int   & リトライ回数 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+
+% ---------------------------------------------------------
+\section{構造化出力}
+\label{sec:structured}
+
+\subsection{JSON モード}
+\label{subsec:json_mode}
+
+\code{response\_format} パラメータに \code{\{"type": "json\_object"\}} を指定することで、モデルに JSON 形式での応答を強制できる。
+データ抽出や構造化された情報の取得に有用である。
+
+\lstinputlisting[style=python, caption={JSON モード（\code{scripts/09\_json\_mode.py}）}]{scripts/09_json_mode.py}
+
+\begin{notebox}[注意]
+JSON モードを使用する際は、システムプロンプトまたはユーザーメッセージで JSON 形式での応答を明示的に指示する必要がある。
+\end{notebox}
+
+\begin{lstlisting}[style=bash]
+uv run scripts/09_json_mode.py
+\end{lstlisting}
+
+\subsection{Pydantic モデルによる構造化出力}
+\label{subsec:pydantic}
+
+Pydantic モデルを \code{response\_format} に渡すことで、より厳密なスキーマに基づいた構造化出力が得られる。
+レスポンスを型安全なオブジェクトとして扱うことができる。
+
+\lstinputlisting[style=python, caption={Pydantic による構造化出力（\code{scripts/10\_structured\_output.py}）}]{scripts/10_structured_output.py}
+
+\begin{lstlisting}[style=bash]
+uv run scripts/10_structured_output.py
+\end{lstlisting}
+
+
+% ---------------------------------------------------------
+\section{ツール呼び出し（Function Calling）}
+\label{sec:tool_calling}
+
+ツール呼び出し（Function Calling）は、モデルが外部の関数やAPIを呼び出す機能である。
+モデルが「どの関数をどのような引数で呼ぶべきか」を判断し、その結果を基に最終的な応答を生成する。
+
+処理の流れは以下のとおりである。
+
+\begin{enumerate}
+  \item ツール定義とユーザーメッセージをモデルに送信
+  \item モデルがツール呼び出し（関数名と引数）を返す
+  \item アプリケーション側で関数を実行し、結果をメッセージに追加
+  \item ツール結果を含めて再度モデルを呼び出し、最終応答を得る
+\end{enumerate}
+
+\lstinputlisting[style=python, caption={ツール呼び出し（\code{scripts/11\_tool\_calling.py}）}]{scripts/11_tool_calling.py}
+
+\begin{lstlisting}[style=bash]
+uv run scripts/11_tool_calling.py
+\end{lstlisting}
+
+
+% ---------------------------------------------------------
+\section{埋め込み（Embedding）}
+\label{sec:embedding}
+
+テキスト埋め込み（Embedding）は、テキストを数値ベクトルに変換する機能であり、意味的な類似度計算や検索に利用される。
+LiteLLM は \code{embedding()} 関数で統一的な埋め込み生成インターフェースを提供する。
+
+\lstinputlisting[style=python, caption={テキスト埋め込み（\code{scripts/12\_embedding.py}）}]{scripts/12_embedding.py}
+
+このスクリプトでは、3つのテキストの埋め込みベクトルを生成し、コサイン類似度を計算している。
+意味的に近い「機械学習」と「深層学習」のテキストペアは、「経済学」との組み合わせよりも高い類似度を示すことが期待される。
+
+\begin{lstlisting}[style=bash]
+uv run scripts/12_embedding.py
+\end{lstlisting}
+
+
+% ---------------------------------------------------------
+\section{エラーハンドリング}
+\label{sec:error_handling}
+
+\subsection{例外マッピング}
+\label{subsec:exception_mapping}
+
+LiteLLM は各プロバイダー固有のエラーを OpenAI 互換の例外クラスにマッピングする。
+これにより、プロバイダーに依存しない統一的なエラーハンドリングが可能になる。
+
+主な例外クラスを表~\ref{tab:exceptions}に示す。
+
+\begin{table}[htbp]
+\centering
+\caption{LiteLLM の主な例外クラス}
+\label{tab:exceptions}
+\begin{tabular}{lll}
+\toprule
+HTTP ステータス & 例外クラス & 説明 \\
+\midrule
+400 & \code{BadRequestError}              & 不正なリクエスト \\
+400 & \code{ContextWindowExceededError}    & コンテキスト長超過 \\
+401 & \code{AuthenticationError}           & 認証エラー \\
+403 & \code{PermissionDeniedError}         & 権限エラー \\
+404 & \code{NotFoundError}                 & リソースが見つからない \\
+408 & \code{Timeout}                       & タイムアウト \\
+429 & \code{RateLimitError}                & レート制限 \\
+500 & \code{InternalServerError}           & サーバー内部エラー \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\lstinputlisting[style=python, caption={エラーハンドリング（\code{scripts/13\_error\_handling.py}）}]{scripts/13_error_handling.py}
+
+\begin{lstlisting}[style=bash]
+uv run scripts/13_error_handling.py
+\end{lstlisting}
+
+\subsection{フォールバック}
+\label{subsec:fallback}
+
+あるモデルが利用不能になった場合に、自動的に別のモデルに切り替えるフォールバック機構を実装できる。
+
+\lstinputlisting[style=python, caption={フォールバック（\code{scripts/14\_fallback.py}）}]{scripts/14_fallback.py}
+
+\begin{lstlisting}[style=bash]
+uv run scripts/14_fallback.py
+\end{lstlisting}
+
+
+% ---------------------------------------------------------
+\section{Router によるロードバランシング}
+\label{sec:router}
+
+\code{Router} クラスは、複数のモデルデプロイメント間でリクエストを分散させるロードバランサーである。
+リトライ、フォールバック、クールダウンなどの信頼性機能を内蔵している。
+
+\subsection{ロードバランシング戦略}
+
+Router が提供するロードバランシング戦略を表~\ref{tab:routing}に示す。
+
+\begin{table}[htbp]
+\centering
+\caption{Router のロードバランシング戦略}
+\label{tab:routing}
+\begin{tabular}{lp{8cm}}
+\toprule
+戦略 & 説明 \\
+\midrule
+\code{simple-shuffle} & RPM/TPM の重みに基づくランダム分散（推奨） \\
+\code{latency-based-routing} & 応答時間が最も短いデプロイメントを選択 \\
+\code{usage-based-routing}   & TPM 使用量が最も少ないデプロイメントを選択 \\
+\code{least-busy}            & 同時リクエスト数が最も少ないものを選択 \\
+\code{cost-based-routing}    & 最もコストの低いデプロイメントを選択 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\lstinputlisting[style=python, caption={Router によるロードバランシング（\code{scripts/15\_router.py}）}]{scripts/15_router.py}
+
+\begin{lstlisting}[style=bash]
+uv run scripts/15_router.py
+\end{lstlisting}
+
+
+% ---------------------------------------------------------
+\section{コールバックとオブザーバビリティ}
+\label{sec:callbacks}
+
+\subsection{カスタムコールバック}
+\label{subsec:custom_callback}
+
+LiteLLM のコールバック機構を使うと、API 呼び出しの前後にカスタムロジックを挿入できる。
+ログ記録、メトリクス収集、アラートなどに活用できる。
+
+\lstinputlisting[style=python, caption={カスタムコールバック（\code{scripts/16\_custom\_callback.py}）}]{scripts/16_custom_callback.py}
+
+\code{CustomLogger} を継承し、以下のフックメソッドをオーバーライドする。
+
+\begin{itemize}
+  \item \code{log\_pre\_api\_call}: API 呼び出し前に実行
+  \item \code{log\_post\_api\_call}: API 呼び出し後に実行
+  \item \code{log\_success\_event}: 成功時に実行
+  \item \code{log\_failure\_event}: 失敗時に実行
+\end{itemize}
+
+\begin{lstlisting}[style=bash]
+uv run scripts/16_custom_callback.py
+\end{lstlisting}
+
+\subsection{外部オブザーバビリティツールとの連携}
+
+LiteLLM は以下のようなオブザーバビリティツールとの連携をサポートしている。
+
+\begin{itemize}
+  \item \textbf{Langfuse}: LLM アプリケーションのトレーシングと分析
+  \item \textbf{Lunary}: LLM モニタリングプラットフォーム
+  \item \textbf{MLflow}: 実験管理とモデル追跡
+  \item \textbf{Helicone}: API リクエストのログとメトリクス
+  \item \textbf{OpenTelemetry}: 分散トレーシング標準
+\end{itemize}
+
+連携は \code{litellm.success\_callback} にサービス名を指定するだけで有効化できる。
+
+\begin{lstlisting}[style=python, caption={外部ツールとの連携（設定例）}]
+import litellm
+
+litellm.success_callback = ["langfuse", "lunary"]
+litellm.failure_callback = ["sentry"]
+\end{lstlisting}
+
+
+% ---------------------------------------------------------
+\section{コスト追跡}
+\label{sec:cost}
+
+LiteLLM は API 呼び出しのコストを自動的に計算する機能を備えている。
+\code{completion\_cost()} 関数にレスポンスオブジェクトを渡すことで、入出力トークン数に基づいたコストが算出される。
+
+\lstinputlisting[style=python, caption={コスト追跡（\code{scripts/17\_cost\_tracking.py}）}]{scripts/17_cost_tracking.py}
+
+\begin{lstlisting}[style=bash]
+uv run scripts/17_cost_tracking.py
+\end{lstlisting}
+
+\begin{tipbox}[ポイント]
+コスト追跡はモデル間のコストパフォーマンス比較や、プロジェクトの予算管理に非常に有用である。
+Proxy Server を使えば、プロジェクト単位・ユーザー単位でのコスト管理も可能になる。
+\end{tipbox}
+
+
+% ---------------------------------------------------------
+\section{Proxy Server}
+\label{sec:proxy}
+
+LiteLLM Proxy Server は、LiteLLM を OpenAI 互換の API ゲートウェイとして動作させる機能である。
+チーム全体で共有する LLM ゲートウェイとして利用でき、以下の機能を提供する。
+
+\begin{itemize}
+  \item 複数モデルへのルーティング
+  \item 仮想 API キーの発行と管理
+  \item レート制限
+  \item プロジェクト単位のコスト追跡
+  \item 管理ダッシュボード
+\end{itemize}
+
+\subsection{インストールと起動}
+
+\begin{lstlisting}[style=bash]
+# Proxy 版のインストール
+pip install 'litellm[proxy]'
+
+# 設定ファイルで起動
+litellm --config config.yaml
+\end{lstlisting}
+
+\subsection{設定ファイル例}
+
+\begin{lstlisting}[style=python, caption={Proxy Server 設定ファイル（\code{config.yaml}）}]
+model_list:
+  - model_name: gpt-4o-mini
+    litellm_params:
+      model: openai/gpt-4o-mini
+      api_key: os.environ/OPENAI_API_KEY
+
+  - model_name: claude-haiku
+    litellm_params:
+      model: anthropic/claude-haiku-4-5-20251001
+      api_key: os.environ/ANTHROPIC_API_KEY
+
+  - model_name: gemini-flash
+    litellm_params:
+      model: gemini/gemini-2.0-flash
+      api_key: os.environ/GEMINI_API_KEY
+
+router_settings:
+  routing_strategy: simple-shuffle
+  num_retries: 3
+\end{lstlisting}
+
+\subsection{クライアントからの利用}
+
+Proxy Server が起動すると、OpenAI 互換のエンドポイントが提供される。
+既存の OpenAI SDK を使ったコードをそのまま利用できる。
+
+\begin{lstlisting}[style=python, caption={Proxy Server へのアクセス例}]
+from openai import OpenAI
+
+# LiteLLM Proxy に接続
+client = OpenAI(
+    base_url="http://localhost:4000",
+    api_key="sk-1234",  # Proxy の仮想キー
+)
+
+response = client.chat.completions.create(
+    model="gpt-4o-mini",
+    messages=[{"role": "user", "content": "Hello!"}],
+)
+print(response.choices[0].message.content)
+\end{lstlisting}
+
+
+% ---------------------------------------------------------
+\section{スクリプト一覧}
+\label{sec:script_list}
+
+本チュートリアルで使用したサンプルスクリプトの一覧を表~\ref{tab:scripts}に示す。
+
+\begin{longtable}{lp{7cm}l}
+\caption{サンプルスクリプト一覧}
+\label{tab:scripts} \\
+\toprule
+ファイル名 & 内容 & 節 \\
+\midrule
+\endfirsthead
+\toprule
+ファイル名 & 内容 & 節 \\
+\midrule
+\endhead
+\code{01\_basic\_completion.py}   & 基本的な補完呼び出し         & \ref{subsec:basic_completion} \\
+\code{02\_multi\_provider.py}     & 複数プロバイダーの呼び出し    & \ref{subsec:multi_provider} \\
+\code{03\_system\_prompt.py}      & システムプロンプトの活用       & \ref{subsec:system_prompt} \\
+\code{04\_multi\_turn.py}         & マルチターン会話              & \ref{subsec:multi_turn} \\
+\code{05\_streaming.py}           & 同期ストリーミング            & \ref{subsec:sync_stream} \\
+\code{06\_async\_streaming.py}    & 非同期ストリーミング          & \ref{subsec:async_stream} \\
+\code{07\_async\_parallel.py}     & 非同期並列呼び出し            & \ref{subsec:parallel} \\
+\code{08\_temperature.py}         & temperature パラメータ       & \ref{subsec:temperature} \\
+\code{09\_json\_mode.py}          & JSON モード                  & \ref{subsec:json_mode} \\
+\code{10\_structured\_output.py}  & Pydantic による構造化出力     & \ref{subsec:pydantic} \\
+\code{11\_tool\_calling.py}       & ツール呼び出し               & \ref{sec:tool_calling} \\
+\code{12\_embedding.py}           & テキスト埋め込み             & \ref{sec:embedding} \\
+\code{13\_error\_handling.py}     & エラーハンドリング            & \ref{subsec:exception_mapping} \\
+\code{14\_fallback.py}            & フォールバック               & \ref{subsec:fallback} \\
+\code{15\_router.py}              & Router                      & \ref{sec:router} \\
+\code{16\_custom\_callback.py}    & カスタムコールバック          & \ref{subsec:custom_callback} \\
+\code{17\_cost\_tracking.py}      & コスト追跡                   & \ref{sec:cost} \\
+\bottomrule
+\end{longtable}
+
+すべてのスクリプトは以下のコマンドで実行できる。
+
+\begin{lstlisting}[style=bash]
+uv run scripts/<ファイル名>.py
+\end{lstlisting}
+
+
+% ---------------------------------------------------------
+\section{おわりに}
+\label{sec:conclusion}
+
+本チュートリアルでは、LiteLLM の基本的な使い方から、ストリーミング、非同期処理、構造化出力、ツール呼び出し、埋め込み、エラーハンドリング、ロードバランシング、コールバック、コスト追跡、Proxy Server まで幅広く解説した。
+
+LiteLLM を活用することで、以下の利点が得られる。
+
+\begin{itemize}
+  \item \textbf{ベンダーロックインの回避}: プロバイダーの切り替えがモデル名の変更だけで完了する
+  \item \textbf{比較実験の効率化}: 同じコードで複数モデルの性能を比較できる
+  \item \textbf{プロダクション対応}: Router やProxy Server により、本番環境での運用にも対応できる
+  \item \textbf{コスト管理}: 自動的なコスト計算により、研究予算の管理が容易になる
+\end{itemize}
+
+LLM の進化は急速であり、新しいモデルやプロバイダーが次々と登場している。
+LiteLLM のような抽象化レイヤーを活用することで、技術の進歩に柔軟に対応しながら、本質的な研究や開発に集中できるようになる。
+
+詳細な API リファレンスや最新の対応モデルについては、公式ドキュメント\footnote{\url{https://docs.litellm.ai/}}を参照されたい。
+
+\end{document}
