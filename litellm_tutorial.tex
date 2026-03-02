@@ -682,6 +682,151 @@ print(response.choices[0].message.content)
 
 
 % ---------------------------------------------------------
+\section{vLLM との連携}
+\label{sec:vllm}
+
+vLLM\footnote{\url{https://docs.vllm.ai/}} は、LLM の推論を高速に実行するためのオープンソースライブラリである。
+PagedAttention や連続バッチング（Continuous Batching）などの最適化技術により、GPU メモリを効率的に活用しながら高いスループットを実現する。
+
+LiteLLM は vLLM サーバーを \textbf{バックエンドの一つとして統合的に扱う}ことができる。
+これにより、ローカル GPU で動作するオープンソースモデルを、クラウド API と同じインターフェースで呼び出せる。
+
+\subsection{vLLM の概要と役割分担}
+
+LiteLLM と vLLM の役割を表~\ref{tab:vllm_roles}に整理する。
+
+\begin{table}[htbp]
+\centering
+\caption{LiteLLM と vLLM の役割分担}
+\label{tab:vllm_roles}
+\begin{tabular}{lp{5cm}p{5cm}}
+\toprule
+         & \textbf{vLLM} & \textbf{LiteLLM} \\
+\midrule
+役割     & LLM 推論エンジン & 統一 API ゲートウェイ \\
+動作場所 & ローカル GPU サーバー & クライアント側 or Proxy サーバー \\
+主な機能 & モデルのロード、推論の高速化、OpenAI 互換 API の提供 & 複数バックエンドの統一呼び出し、ルーティング、コスト追跡 \\
+対象モデル & Hugging Face 上のオープンソースモデル & vLLM を含む 100 以上のプロバイダー \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{vLLM サーバーの起動}
+
+vLLM のインストールと、OpenAI 互換 API サーバーの起動方法を以下に示す。
+
+\begin{lstlisting}[style=bash]
+# vLLM のインストール
+pip install vllm
+
+# チャットモデルのサーバー起動（例: Llama 3.1 8B）
+vllm serve meta-llama/Llama-3.1-8B-Instruct --port 8000
+
+# 埋め込みモデルのサーバー起動（別ポートで）
+vllm serve intfloat/multilingual-e5-large-instruct --port 8001
+\end{lstlisting}
+
+\begin{notebox}[GPU 要件]
+vLLM には CUDA 対応 GPU（Compute Capability $\geq$ 7.0）が必要である。
+代表的な対応 GPU は V100、T4、RTX 20xx 以降、A100、L4、H100 などである。
+\code{--gpu-memory-utilization} オプションで VRAM 使用率を調整できる（デフォルト: 0.9）。
+\end{notebox}
+
+\subsection{基本的な呼び出し}
+\label{subsec:vllm_completion}
+
+vLLM サーバーに対して LiteLLM から呼び出すには、モデル名に \code{hosted\_vllm/} プレフィックスを付け、\code{api\_base} にサーバーの URL を指定する。
+
+\lstinputlisting[style=python, caption={vLLM サーバー経由の補完呼び出し（\code{scripts/18\_vllm\_completion.py}）}]{scripts/18_vllm_completion.py}
+
+クラウド API の呼び出しと同じ \code{completion()} 関数を使っている点に注目されたい。
+\code{model} と \code{api\_base} を変えるだけで、ローカルの vLLM サーバーにリクエストが送られる。
+
+\begin{lstlisting}[style=bash]
+uv run scripts/18_vllm_completion.py
+\end{lstlisting}
+
+\subsection{ストリーミング}
+\label{subsec:vllm_streaming}
+
+vLLM サーバーからのストリーミング応答も、クラウド API と同様に \code{stream=True} で利用できる。
+
+\lstinputlisting[style=python, caption={vLLM ストリーミング（\code{scripts/19\_vllm\_streaming.py}）}]{scripts/19_vllm_streaming.py}
+
+\begin{lstlisting}[style=bash]
+uv run scripts/19_vllm_streaming.py
+\end{lstlisting}
+
+\subsection{埋め込み}
+\label{subsec:vllm_embedding}
+
+vLLM は埋め込みモデルの推論もサポートしている。
+LiteLLM の \code{embedding()} 関数から、vLLM サーバー上の埋め込みモデルを呼び出せる。
+
+\lstinputlisting[style=python, caption={vLLM による埋め込み生成（\code{scripts/20\_vllm\_embedding.py}）}]{scripts/20_vllm_embedding.py}
+
+\begin{lstlisting}[style=bash]
+uv run scripts/20_vllm_embedding.py
+\end{lstlisting}
+
+\subsection{ローカルとクラウドの混合構成}
+\label{subsec:vllm_multi_backend}
+
+LiteLLM の Router を使うと、ローカルの vLLM サーバーをプライマリとして使用し、サーバーが停止している場合やエラー発生時にクラウド API へ自動フォールバックする構成を実現できる。
+
+\lstinputlisting[style=python, caption={vLLM とクラウド API の混合利用（\code{scripts/21\_vllm\_multi\_backend.py}）}]{scripts/21_vllm_multi_backend.py}
+
+この構成には以下の利点がある。
+
+\begin{itemize}
+  \item \textbf{コスト削減}: ローカル GPU を活用することで、API 呼び出しコストを大幅に削減できる
+  \item \textbf{データプライバシー}: 機密データをローカルで処理し、外部に送信しない
+  \item \textbf{高可用性}: ローカルサーバー障害時にクラウドへ自動切り替え
+  \item \textbf{レイテンシ最適化}: ローカル推論によるネットワーク遅延の削減
+\end{itemize}
+
+\begin{lstlisting}[style=bash]
+uv run scripts/21_vllm_multi_backend.py
+\end{lstlisting}
+
+\subsection{Proxy Server での vLLM 統合}
+
+LiteLLM Proxy Server の設定ファイルに vLLM サーバーを追加することで、チーム全体でローカルモデルとクラウドモデルを透過的に利用できる。
+
+\begin{lstlisting}[style=python, caption={vLLM を含む Proxy Server 設定（\code{config.yaml}）}]
+model_list:
+  # ローカル vLLM サーバー
+  - model_name: llama-local
+    litellm_params:
+      model: hosted_vllm/meta-llama/Llama-3.1-8B-Instruct
+      api_base: http://localhost:8000
+      rpm: 100
+
+  # クラウド API（フォールバック先）
+  - model_name: llama-local
+    litellm_params:
+      model: openai/gpt-4o-mini
+      api_key: os.environ/OPENAI_API_KEY
+      rpm: 30
+
+  # 埋め込みモデル（vLLM）
+  - model_name: embedding-local
+    litellm_params:
+      model: hosted_vllm/intfloat/multilingual-e5-large-instruct
+      api_base: http://localhost:8001
+
+router_settings:
+  routing_strategy: simple-shuffle
+  num_retries: 2
+\end{lstlisting}
+
+\begin{tipbox}[ポイント]
+vLLM と LiteLLM の組み合わせは、「ローカル GPU の計算資源を最大限活用しつつ、クラウド API の利便性と信頼性も確保する」ハイブリッド構成を低コストで実現する。
+研究室のオンプレミス GPU サーバーに vLLM を配置し、LiteLLM Proxy で一元管理するアーキテクチャは、学術研究の現場でも有効な構成である。
+\end{tipbox}
+
+
+% ---------------------------------------------------------
 \section{スクリプト一覧}
 \label{sec:script_list}
 
@@ -715,6 +860,10 @@ print(response.choices[0].message.content)
 \code{15\_router.py}              & Router                      & \ref{sec:router} \\
 \code{16\_custom\_callback.py}    & カスタムコールバック          & \ref{subsec:custom_callback} \\
 \code{17\_cost\_tracking.py}      & コスト追跡                   & \ref{sec:cost} \\
+\code{18\_vllm\_completion.py}   & vLLM 基本呼び出し            & \ref{subsec:vllm_completion} \\
+\code{19\_vllm\_streaming.py}    & vLLM ストリーミング           & \ref{subsec:vllm_streaming} \\
+\code{20\_vllm\_embedding.py}    & vLLM 埋め込み生成             & \ref{subsec:vllm_embedding} \\
+\code{21\_vllm\_multi\_backend.py} & vLLM+クラウド混合構成        & \ref{subsec:vllm_multi_backend} \\
 \bottomrule
 \end{longtable}
 
