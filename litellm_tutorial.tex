@@ -16,6 +16,8 @@
 \usepackage{graphicx}
 \usepackage{longtable}
 \usepackage{amssymb}
+\usepackage{tikz}
+\usetikzlibrary{positioning,fit,arrows.meta,calc,backgrounds}
 \usepackage{fancyhdr}
 
 % ===== ハイパーリンク設定 =====
@@ -138,6 +140,102 @@
   \item \textbf{ストリーミング}: 全プロバイダーで統一的なストリーミング応答
   \item \textbf{非同期対応}: \code{acompletion()} による非同期処理
   \item \textbf{Proxy Server}: OpenAI 互換の API ゲートウェイとしても動作
+\end{itemize}
+
+\subsection{アーキテクチャの全体像}
+
+LiteLLM を中心とした LLM 活用のアーキテクチャを図~\ref{fig:architecture}に示す。
+LiteLLM は API 抽象化層として、その下にある複数のバックエンド --- 商用 API、マネージド推論プラットフォーム、セルフホスト推論エンジン --- を統一的に扱う。
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[
+  every node/.style={font=\small},
+  layer/.style={
+    draw, rounded corners=3pt, minimum height=1.1cm,
+    text width=14cm, align=center, font=\small,
+  },
+  sublayer/.style={
+    draw, rounded corners=2pt, minimum height=3.0cm,
+    text width=4.2cm, align=center, font=\small,
+  },
+  hwlayer/.style={
+    draw, rounded corners=3pt, minimum height=1.1cm,
+    align=center, font=\small,
+  },
+  label/.style={font=\small\bfseries, text=black!70},
+  arr/.style={-{Stealth[length=5pt]}, thick, black!50},
+]
+
+% --- アプリケーション層 ---
+\node[layer, fill=orange!15, draw=orange!60]
+  (app) {\textbf{アプリケーション層}\\[2pt]
+  LangChain\enspace/\enspace 自作アプリケーション\enspace/\enspace RAG パイプライン};
+
+% --- API 抽象化層 ---
+\node[layer, fill=blue!15, draw=blue!60, below=0.5cm of app]
+  (litellm) {\textbf{API 抽象化層 --- LiteLLM}\\[2pt]
+  \texttt{completion()}\enspace/\enspace Router\enspace/\enspace Proxy Server};
+
+% --- 3つの並列バックエンド ---
+\node[sublayer, fill=red!10, draw=red!50,
+      below left=0.7cm and 0.15cm of litellm.south, anchor=north east]
+  (commercial) {%
+    \textbf{商用 API}\\[4pt]
+    OpenAI\\ Anthropic\\ Google\\ Mistral AI};
+
+\node[sublayer, fill=green!10, draw=green!50,
+      below=0.7cm of litellm.south, anchor=north]
+  (managed) {%
+    \textbf{マネージド推論}\\
+    \textbf{プラットフォーム}\\[6pt]
+    Together AI\enspace/\enspace Groq\\
+    AWS Bedrock\\
+    Azure OpenAI};
+
+\node[sublayer, fill=purple!10, draw=purple!50,
+      below right=0.7cm and 0.15cm of litellm.south, anchor=north west]
+  (selfhost) {%
+    \textbf{セルフホスト推論}\\
+    \textbf{エンジン}\\[4pt]
+    vLLM\enspace/\enspace Ollama\\
+    llama.cpp\enspace/\enspace TGI};
+
+% --- ハードウェア層（セルフホストのみ） ---
+\node[hwlayer, fill=gray!15, draw=gray!60,
+      text width=4.2cm,
+      below=0.5cm of selfhost]
+  (hw) {\textbf{ハードウェア層}\\[2pt]
+  GPU (CUDA)\enspace/\enspace CPU};
+
+% --- 矢印 ---
+\draw[arr] (app) -- (litellm);
+\draw[arr] (litellm.south) -- ++(0,-0.25) -| (commercial.north);
+\draw[arr] (litellm.south) -- (managed.north);
+\draw[arr] (litellm.south) -- ++(0,-0.25) -| (selfhost.north);
+\draw[arr] (selfhost) -- (hw);
+
+% --- 注釈 ---
+\node[font=\scriptsize\itshape, text=gray, right=0.15cm of hw.east]
+  {セルフホストの場合のみ};
+
+\end{tikzpicture}
+\caption{LiteLLM を中心とした LLM 活用のアーキテクチャ}
+\label{fig:architecture}
+\end{figure}
+
+この構成の要点は以下のとおりである。
+
+\begin{itemize}
+  \item \textbf{LiteLLM は API 抽象化層}に位置し、下層のバックエンドの違いを吸収する
+  \item LiteLLM の下層は\textbf{3つの並列な経路}に分かれる:
+    \begin{enumerate}
+      \item \textbf{商用 API}（OpenAI, Anthropic 等）--- プロプライエタリモデルをクラウド経由で利用
+      \item \textbf{マネージド推論プラットフォーム}（Together AI, Groq 等）--- オープンソースモデルをクラウド経由で利用
+      \item \textbf{セルフホスト推論エンジン}（vLLM, Ollama 等）--- オープンソースモデルを自前の GPU/CPU で実行
+    \end{enumerate}
+  \item \textbf{ハードウェア層が必要なのはセルフホストの場合のみ}。商用 API やマネージドプラットフォームではハードウェアを意識する必要がない
+  \item \textbf{アプリケーション層}（LangChain 等）は LiteLLM の上に構築することも、LiteLLM を経由せず直接各プロバイダーに接続することも可能である
 \end{itemize}
 
 \subsection{本チュートリアルについて}
