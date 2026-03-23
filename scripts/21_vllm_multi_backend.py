@@ -33,11 +33,10 @@ model_list = [
         },
     },
     {
-        "model_name": "my-llm",
+        "model_name": "my-llm-cloud",
         "litellm_params": {
             "model": "openai/gpt-4o-mini",
             "api_key": os.getenv("OPENAI_API_KEY"),
-            "rpm": 30,
         },
         "model_info": {
             "description": "クラウド API（フォールバック）",
@@ -47,9 +46,9 @@ model_list = [
 
 router = Router(
     model_list=model_list,
-    fallbacks=[{"my-llm": ["my-llm"]}],
+    # 通常はローカル vLLM を使い、失敗時だけクラウドへ切り替える。
+    fallbacks=[{"my-llm": ["my-llm-cloud"]}],
     num_retries=2,
-    routing_strategy="simple-shuffle",
 )
 
 

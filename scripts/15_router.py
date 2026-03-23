@@ -12,6 +12,7 @@ import asyncio
 from litellm import Router
 
 # 複数デプロイメントの設定
+# 実運用では別リージョンや別デプロイメントを並べることが多い。
 model_list = [
     {
         "model_name": "my-gpt",  # エイリアス名
@@ -33,9 +34,6 @@ model_list = [
 router = Router(
     model_list=model_list,
     num_retries=3,            # リトライ回数
-    fallbacks=[               # フォールバック設定
-        {"my-gpt": ["my-gpt"]}
-    ],
     routing_strategy="simple-shuffle",  # ロードバランシング戦略
 )
 
